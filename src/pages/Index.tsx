@@ -1,6 +1,8 @@
 import { useState } from "react";
 import Icon from "@/components/ui/icon";
 
+const CREATE_PAYMENT_URL = "https://functions.poehali.dev/df5e5de2-1fdf-4d1a-b0ea-b887a54a3157";
+
 const plans = [
   {
     id: "month",
@@ -47,6 +49,42 @@ export default function Index() {
   const [formData, setFormData] = useState({ name: "", email: "", message: "" });
   const [sent, setSent] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [payingPlanId, setPayingPlanId] = useState<string | null>(null);
+  const [payError, setPayError] = useState<string | null>(null);
+  const [emailInputs, setEmailInputs] = useState<Record<string, string>>({});
+  const [showEmailFor, setShowEmailFor] = useState<string | null>(null);
+
+  const handleBuyPlan = async (plan: typeof plans[0]) => {
+    if (showEmailFor !== plan.id) {
+      setShowEmailFor(plan.id);
+      return;
+    }
+    const email = emailInputs[plan.id] || "";
+    setPayingPlanId(plan.id);
+    setPayError(null);
+    try {
+      const res = await fetch(CREATE_PAYMENT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          plan_id: plan.id,
+          plan_name: plan.name,
+          amount: parseInt(plan.price),
+          email,
+        }),
+      });
+      const data = await res.json();
+      if (data.confirmation_url) {
+        window.location.href = data.confirmation_url;
+      } else {
+        setPayError("Ошибка создания платежа. Попробуйте снова.");
+      }
+    } catch {
+      setPayError("Ошибка соединения. Попробуйте снова.");
+    } finally {
+      setPayingPlanId(null);
+    }
+  };
 
   const scrollTo = (id: string) => {
     setActiveNav(id);
@@ -229,7 +267,7 @@ export default function Index() {
                   <p className="text-sm text-muted-foreground">{plan.description}</p>
                 </div>
 
-                <ul className="flex flex-col gap-3 mb-8 flex-1">
+                <ul className="flex flex-col gap-3 mb-6 flex-1">
                   {plan.features.map((feat) => (
                     <li key={feat} className="flex items-center gap-2.5 text-sm">
                       <Icon name="Check" size={15} className="text-primary flex-shrink-0" />
@@ -238,19 +276,42 @@ export default function Index() {
                   ))}
                 </ul>
 
+                {showEmailFor === plan.id && (
+                  <div className="mb-3">
+                    <input
+                      type="email"
+                      placeholder="Ваш email для чека"
+                      value={emailInputs[plan.id] || ""}
+                      onChange={e => setEmailInputs(prev => ({ ...prev, [plan.id]: e.target.value }))}
+                      className="w-full bg-secondary border border-border/60 rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 transition-all"
+                    />
+                  </div>
+                )}
+
                 <button
-                  className={`w-full py-3 rounded-xl font-semibold text-sm transition-all ${
+                  onClick={() => handleBuyPlan(plan)}
+                  disabled={payingPlanId === plan.id}
+                  className={`w-full py-3 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed ${
                     plan.popular
                       ? "bg-primary text-primary-foreground hover:opacity-90 hover:scale-[1.02]"
                       : "border border-border hover:border-primary/50 text-foreground hover:bg-primary/5"
                   }`}
                 >
-                  Выбрать план
+                  {payingPlanId === plan.id ? (
+                    <><Icon name="Loader" size={15} className="animate-spin" />Создание платежа...</>
+                  ) : showEmailFor === plan.id ? (
+                    <><Icon name="CreditCard" size={15} />Оплатить {plan.price}₽</>
+                  ) : (
+                    "Выбрать план"
+                  )}
                 </button>
               </div>
             ))}
           </div>
-          <p className="text-center text-sm text-muted-foreground mt-8">
+          {payError && (
+            <p className="text-center text-sm text-destructive mt-4">{payError}</p>
+          )}
+          <p className="text-center text-sm text-muted-foreground mt-6">
             Все тарифы включают 7-дневный бесплатный период · Отмена в любое время
           </p>
         </div>
